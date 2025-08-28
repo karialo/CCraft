@@ -1,5 +1,6 @@
 -- /kari/boot/startup.lua
 -- robust boot (ASCII-safe local logger) + updater self-heal + cinematic splash + radios + GPSD + role launch
+-- Updater runs in a CLEAN sandbox via os.run to avoid global bleed/recursion
 
 -- ---------- config / utils ----------
 local CFG = "/kari/data/config"
@@ -54,7 +55,17 @@ local function openWireless()
   return opened
 end
 
-local function spinnerRun(label, cmd, ...)
+-- run a program in a CLEAN sandbox with vanilla print
+local function run_sandboxed(path, ...)
+  local env = setmetatable({}, { __index = _G })
+  env.print = VANILLA_PRINT
+  -- (Leave everything else inherited read-only via __index)
+  local ok, err = pcall(function() os.run(env, path, ...) end)
+  if not ok then VANILLA_PRINT(err) end
+  return ok
+end
+
+local function spinnerRun(label, path, ...)
   local args={...}
   local w,_=term.getSize()
   term.setCursorPos(1,2); VANILLA_PRINT(string.rep("-", w))
@@ -66,14 +77,7 @@ local function spinnerRun(label, cmd, ...)
       sleep(0.1)
     end
   end
-  local function runit()
-    -- ensure child program uses vanilla print
-    local saved = _G.print
-    _G.print = VANILLA_PRINT
-    ok = shell.run(cmd, table.unpack(args))
-    _G.print = saved
-    done=true
-  end
+  local function runit() ok = run_sandboxed(path, table.unpack(args)); done=true end
   parallel.waitForAny(spin, runit)
   term.setCursorPos(#label+2,3); write(ok and "[OK]" or "[ERR]"); p()
   return ok
@@ -137,9 +141,8 @@ local role = cfg.role or (turtle and "turtle" or (pocket and "tablet" or "pc"))
 if fs.exists("/kari/ui/splash.lua") then
   local splash = dofile("/kari/ui/splash.lua")
   local id = tostring(os.getComputerID() or "?")
-  -- If you added role palettes in splash.lua, pass role here:
   splash.show{
-    role     = role,
+    role     = role,      -- palette support if available
     title    = "K . A . R . I",
     subtitle = "Boot sequence",
     info     = {
@@ -147,9 +150,9 @@ if fs.exists("/kari/ui/splash.lua") then
       {"Role", role},
       {"Label", os.getComputerLabel() or "unset"},
     },
-    steps    = 40,   -- bigger = longer animation
+    steps    = 40,        -- longer animation
   }
-  sleep(3)          -- linger on glam panel
+  sleep(3)                -- linger on glam panel
 end
 
 -- Prefer supervisor for hub so daemons auto-restart
@@ -163,16 +166,16 @@ local TARGET = ({
 -- Radios first
 openWireless()
 
--- Optional: register hostname for discovery (CCTweaked has rednet.host)
+-- Optional: register hostname for discovery
 if rednet.host and type(rednet.host)=="function" then
-  pcall(rednet.host, cfg.proto or "kari.bus.v2", (cfg.name or role or "kari"))
+  pcall(rednet.host, (cfg.proto or "kari.bus.v2"), (cfg.name or role or "kari"))
 end
 
 -- Launch gps daemon if config says so (or always for hub)
 local wantGPS = (cfg.gps == true) or (type(cfg.gps)=="table" and (cfg.gps.enabled or cfg.gps.host)) or (role=="hub")
 if wantGPS and has("/kari/services/gpsd.lua") then
   if shell.openTab then shell.openTab("/kari/services/gpsd.lua")
-  else parallel.waitForAny(function() shell.run("/kari/services/gpsd.lua") end, function() sleep(0) end) end
+  else parallel.waitForAny(function() os.run(setmetatable({print=VANILLA_PRINT},{__index=_G}), "/kari/services/gpsd.lua") end, function() sleep(0) end) end
 end
 
 -- Set a sensible default label
@@ -190,6 +193,5 @@ if not has(TARGET) then
   end
 end
 
--- No extra banner printing here—splash is the banner.
--- Handoff to role program
-shell.run(TARGET)
+-- Handoff to role program (run sandboxed just in case)
+run_sandboxed(TARGET)
