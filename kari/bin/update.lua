@@ -1,33 +1,40 @@
--- /kari/bin/update.lua — GitHub Raw manifest updater (role-aware)
--- Usage: update.lua [--sync] [--first-boot] [--autoboot]
+-- /kari/bin/update.lua — hardened GitHub Raw manifest updater (role-aware, Lua 5.1-safe)
 
--- ===== config & utils =====
+-- ===== tiny utils =====
 local CFG = "/kari/data/config"
 local unser = textutils.unserialize or textutils.unserialise
-local jdec  = textutils.unserialiseJSON or unser
+local jdec  = textutils.unserialiseJSON or textutils.unserializeJSON or unser
 
+local function log(...)  -- zero fanciness, zero recursion risk
+  local t = {}
+  for i=1,select("#", ...) do t[#t+1] = tostring(select(i, ...)) end
+  print(table.concat(t, " "))
+end
 local function has(p) return fs.exists(p) and not fs.isDir(p) end
-local function mk(p) if not fs.exists(p) then fs.makeDir(p) end end
-local function readTbl(path)
-  if not has(path) then return {} end
-  local h=fs.open(path,"r"); local s=h.readAll(); h.close()
-  local ok,t=pcall(unser,s); return (ok and type(t)=="table") and t or {}
+local function mkdir(path)
+  local d = fs.getDir(path)
+  if d ~= "" and not fs.exists(d) then fs.makeDir(d) end
 end
 
-local function writeFile(path, data)
-  mk(fs.getDir(path))
-  local h=fs.open(path,"w"); h.write(data); h.close()
+local function readTbl(path)
+  if not has(path) then return {} end
+  local ok, res = pcall(function()
+    local h=fs.open(path,"r"); local s=h.readAll(); h.close()
+    local t = unser(s); return (type(t)=="table") and t or {}
+  end)
+  return (ok and res) or {}
 end
 
 local function http_get(u, tries)
-  tries=tries or 3
+  if not http then return nil end               -- never throw if HTTP disabled
+  tries = tries or 3
   for i=1,tries do
-    local ok,res=pcall(http.get, u, {["User-Agent"]="KARI-Updater"})
+    local ok,res = pcall(http.get, u, {["User-Agent"]="KARI-Updater"})
     if ok and res then
-      local b=res.readAll() or ""; res.close()
-      if #b>0 then return b end
+      local b = res.readAll() or ""; res.close()
+      if #b > 0 then return b end
     end
-    sleep(0.3)
+    sleep(0.25)
   end
   return nil
 end
@@ -38,18 +45,9 @@ local function needsUpdate(path, contents)
   return cur ~= contents
 end
 
-local function header(tag, role, channel)
-  local w,_=term.getSize()
-  term.setBackgroundColor(colors.black); term.setTextColor(colors.white); term.clear()
-  term.setCursorPos(1,1)
-  print(("K.A.R.I Updater  [%s]"):format(tag or ""))
-  print(("-"):rep(w))
-  print(("role=%s  channel=%s"):format(tostring(role), tostring(channel)))
-end
-
 -- ===== manifest loader =====
 local function normalize_items(origin, base, items)
-  local out={}
+  local out = {}
   local function join(u) return (u:gsub("([^:])//+","%1/")) end
   for _,it in ipairs(items or {}) do
     if type(it)=="string" then
@@ -68,11 +66,10 @@ local function normalize_items(origin, base, items)
 end
 
 local function load_manifest(channel, role)
-  local manifest_url = "https://raw.githubusercontent.com/karialo/CCraft/main/manifest.json"
-  local raw = http_get(manifest_url)
-  if not raw then return nil, "cannot fetch manifest" end
-  local man = jdec(raw)
-  if type(man)~="table" then return nil, "bad manifest JSON" end
+  local raw = http_get("https://raw.githubusercontent.com/karialo/CCraft/main/manifest.json")
+  if not raw then return nil, "no-manifest" end
+  local ok, man = pcall(jdec, raw)
+  if not ok or type(man)~="table" then return nil, "bad-json" end
 
   local origin = man.origin or "https://raw.githubusercontent.com/karialo/CCraft/main"
   local base   = man.base or ""
@@ -80,61 +77,59 @@ local function load_manifest(channel, role)
   local roles_tbl
   if type(man.channels)=="table" then
     local ch = man.channels[channel or "stable"]
-    if not ch then return nil, "channel "..tostring(channel).." not found" end
-    roles_tbl = (type(ch.roles)=="table") and ch.roles or nil
-  else
-    roles_tbl = (type(man.roles)=="table") and man.roles or nil
+    roles_tbl = ch and type(ch.roles)=="table" and ch.roles or nil
+  elseif type(man.roles)=="table" then
+    roles_tbl = man.roles
   end
-  if not roles_tbl then return nil, "manifest missing roles" end
+  if type(roles_tbl)~="table" then return nil, "no-roles" end
 
   local items = roles_tbl[role]
-  if type(items)~="table" then return nil, "no role '"..tostring(role).."' in manifest" end
+  if type(items)~="table" then return nil, "no-role" end
 
-  local list = normalize_items(origin, base, items)
-  return list, man.version or "0.0.0", origin, base
+  return normalize_items(origin, base, items), (man.version or "0.0.0")
 end
 
--- ===== runner =====
-local args={...}
-local mode = (args[1]=="--first-boot" and "first boot")
-          or (args[1]=="--autoboot"   and "autoboot")
-          or "--sync"
+-- ===== runner (fully guarded) =====
+local ok, err = pcall(function()
+  -- Always ensure /startup exists (requested)
+  if not fs.exists("/startup") then fs.makeDir("/startup") end
 
--- Clearer error if HTTP API is disabled in mod config
-if not http then error("[update] HTTP API is disabled in config. Enable http in ComputerCraft/CCTweaked.", 0) end
+  local cfg = readTbl(CFG)
+  local role    = cfg.role or (turtle and "turtle" or (pocket and "tablet" or "pc"))
+  local channel = cfg.channel or "stable"
 
-local cfg = readTbl(CFG)
-local role    = cfg.role or (turtle and "turtle" or (pocket and "tablet" or "pc"))
-local channel = cfg.channel or "stable"
-header(mode, role, channel)
-
--- Ensure a root /startup directory always exists (requested)
-if not fs.exists("/startup") then fs.makeDir("/startup") end
-
-local list,ver = load_manifest(channel, role)
-if not list then
-  print("Update incomplete: no manifest entries for "..role.." / "..channel)
-  print("Check https://github.com/karialo/CCraft for manifest.json")
-  return
-end
-
-local okc,failc=0,0
-for _,it in ipairs(list) do
-  write("GET "..it.src.." ... ")
-  local body = http_get(it.src)
-  if not body then
-    print("FAIL")
-    failc=failc+1
-  else
-    if needsUpdate(it.path, body) then
-      writeFile(it.path, body)
-      print("updated")
-    else
-      print("ok")
-    end
-    okc=okc+1
+  local list, ver = load_manifest(channel, role)
+  if not list then
+    log("[K.A.R.I] updater: manifest missing for ", role, "/", channel)
+    return
   end
-end
 
-print(("K.A.R.I %s manifest applied. (v%s/%s) ok=%d fail=%d")
-  :format(role, ver, channel, okc, failc))
+  log("[K.A.R.I] Updating ", channel, "/", role, " (", #list, " files)")
+  local okc, failc = 0, 0
+
+  for _,it in ipairs(list) do
+    log("GET ", it.src, " ...")
+    local body = http_get(it.src)
+    if body then
+      if needsUpdate(it.path, body) then
+        mkdir(it.path)
+        local h=fs.open(it.path,"w"); h.write(body); h.close()
+        log("  updated: ", it.path)
+      else
+        log("  ok:      ", it.path)
+      end
+      okc = okc + 1
+    else
+      log("  failed:  ", it.path)
+      failc = failc + 1
+    end
+  end
+
+  log(string.format("[K.A.R.I] %s manifest applied. (v%s/%s) ok=%d fail=%d",
+    role, ver, channel, okc, failc))
+end)
+
+if not ok then
+  -- Never rethrow; just print once.
+  print("[K.A.R.I] updater error: "..tostring(err))
+end
