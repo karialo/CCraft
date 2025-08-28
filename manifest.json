@@ -1,6 +1,7 @@
 {
   "version": "1.0.0",
-  "base": "/files",
+  "origin": "https://raw.githubusercontent.com/karialo/CCraft/main",
+  "base": "",
   "channels": {
     "stable": {
       "roles": {
