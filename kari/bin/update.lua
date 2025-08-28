@@ -50,16 +50,17 @@ end
 -- ===== manifest loader =====
 local function normalize_items(origin, base, items)
   local out={}
+  local function join(u) return (u:gsub("([^:])//+","%1/")) end
   for _,it in ipairs(items or {}) do
     if type(it)=="string" then
-      table.insert(out, { path=it, src = origin..(base or "")..it })
+      table.insert(out, { path=it, src = join(origin..(base or "")..it) })
     elseif type(it)=="table" then
       if it.src and it.src:match("^https?://") then
         table.insert(out, { path=it.path or it.src, src=it.src })
       else
         local p = it.src or it.path
         if not p:match("^/") then p="/"..p end
-        table.insert(out, { path=it.path or p, src = origin..(base or "")..p })
+        table.insert(out, { path=it.path or p, src = join(origin..(base or "")..p) })
       end
     end
   end
@@ -99,10 +100,16 @@ local mode = (args[1]=="--first-boot" and "first boot")
           or (args[1]=="--autoboot"   and "autoboot")
           or "--sync"
 
+-- Clearer error if HTTP API is disabled in mod config
+if not http then error("[update] HTTP API is disabled in config. Enable http in ComputerCraft/CCTweaked.", 0) end
+
 local cfg = readTbl(CFG)
 local role    = cfg.role or (turtle and "turtle" or (pocket and "tablet" or "pc"))
 local channel = cfg.channel or "stable"
 header(mode, role, channel)
+
+-- Ensure a root /startup directory always exists (requested)
+if not fs.exists("/startup") then fs.makeDir("/startup") end
 
 local list,ver = load_manifest(channel, role)
 if not list then

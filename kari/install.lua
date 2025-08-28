@@ -57,6 +57,9 @@ local roles_tbl = (((m.channels or {})[channel] or {}).roles) or {}
 local files = roles_tbl[role]
 if type(files)~="table" or #files==0 then die("No files for "..channel.."/"..role) end
 
+-- NEW: ensure root /startup dir always exists
+if not fs.exists("/startup") then fs.makeDir("/startup") end
+
 print("[K.A.R.I] Updating "..channel.."/"..role.." ("..#files.." files)")
 local okc,failc=0,0
 for _,path in ipairs(files) do
