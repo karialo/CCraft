@@ -1,18 +1,12 @@
--- /kari/ui/splash.lua — cinematic boot splash with role-specific palettes
--- Usage:
---   local splash = dofile("/kari/ui/splash.lua")
---   splash.show{
---     role="pc",                          -- "pc" | "turtle" | "tablet" | "hub"
---     title="K . A . R . I",
---     subtitle="Boot sequence",
---     info={{"ID","9001"},{"Role","pc"},{"Target","/kari/pc/agent.lua"},{"Server","unset"},{"Proto","kari.bus.v2"}},
---     steps=24
---   }
+-- /kari/ui/splash.lua — cinematic boot splash with role-specific palettes (fixed clamp)
 
 local M = {}
 
 -- ===== helpers =====
-local function clamp(n,a,b) if n<a then return a elseif n>b then return n>b and b or n end end
+local function clamp(n, a, b)
+  if n < a then return a elseif n > b then return b else return n end
+end
+
 local function w_h() local w,h=term.getSize(); return w,h end
 local function center(y, s)
   local w,_=w_h()
@@ -41,9 +35,9 @@ local P = {
     panel_sh   = colors.black,
     text_main  = colors.white,
     text_dim   = colors.lightGray,
-    accent     = colors.green,   -- progress fill
+    accent     = colors.green,
   },
-  pc = { -- steel blue vibes
+  pc = { -- steel blue
     rail_top   = {colors.black, colors.blue, colors.lightBlue},
     rail_bot   = {colors.lightBlue, colors.blue, colors.black},
     panel_main = colors.gray,
@@ -53,7 +47,7 @@ local P = {
     text_dim   = colors.lightGray,
     accent     = colors.cyan,
   },
-  turtle = { -- biohazard green
+  turtle = { -- bio green
     rail_top   = {colors.black, colors.green, colors.lime},
     rail_bot   = {colors.lime, colors.green, colors.black},
     panel_main = colors.green,
@@ -63,7 +57,7 @@ local P = {
     text_dim   = colors.lightGray,
     accent     = colors.lime,
   },
-  tablet = { -- amber glow
+  tablet = { -- amber
     rail_top   = {colors.black, colors.orange, colors.yellow},
     rail_bot   = {colors.yellow, colors.orange, colors.black},
     panel_main = colors.yellow,
@@ -93,10 +87,8 @@ end
 -- ===== drawing =====
 local function drawGlassPanel(y, h, pal)
   local w,_=w_h()
-  -- body
   term.setBackgroundColor(pal.panel_main); term.setTextColor(pal.panel_main)
   for i=0,h-1 do term.setCursorPos(3,y+i); term.write(string.rep(" ", w-6)) end
-  -- highlight & shadow
   term.setBackgroundColor(pal.panel_hi); term.setCursorPos(3,y);     term.write(string.rep(" ", w-6))
   term.setBackgroundColor(pal.panel_sh); term.setCursorPos(3,y+h-1); term.write(string.rep(" ", w-6))
 end
@@ -126,7 +118,7 @@ local function kvBlock(y, kv, pal)
 end
 
 local function progress(y, pct, pal)
-  pct = clamp(pct,0,1)
+  pct = clamp(tonumber(pct) or 0, 0, 1)  -- safety
   local w,_=w_h()
   local x=6
   local width=w-12
@@ -157,12 +149,12 @@ end
 -- ===== API =====
 function M.show(opts)
   opts = opts or {}
-  local role     = opts.role     -- affects palette
+  local role     = opts.role
   local pal      = pick(role)
   local title    = opts.title    or "K . A . R . I"
   local subtitle = opts.subtitle or "Boot sequence"
   local info     = opts.info     or {}
-  local steps    = clamp(opts.steps or 20, 1, 60)
+  local steps    = clamp(tonumber(opts.steps) or 20, 1, 60)
 
   term.setBackgroundColor(colors.black); term.setTextColor(colors.white); term.clear()
 
