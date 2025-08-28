@@ -6,6 +6,7 @@
     "stable": {
       "roles": {
         "turtle": [
+          "/startup.lua",
           "/kari/boot/startup.lua",
           "/kari/os/kari_lib.lua",
           "/kari/turtles/agent.lua",
@@ -13,6 +14,7 @@
           "/kari/services/gpsd.lua"
         ],
         "tablet": [
+          "/startup.lua",
           "/kari/boot/startup.lua",
           "/kari/os/kari_lib.lua",
           "/kari/os/main.lua",
@@ -22,6 +24,7 @@
           "/kari/services/gpsd.lua"
         ],
         "hub": [
+          "/startup.lua",
           "/kari/boot/startup.lua",
           "/kari/os/kari_lib.lua",
           "/kari/hub/hubd.lua",
@@ -32,6 +35,7 @@
           "/kari/os/main.lua"
         ],
         "pc": [
+          "/startup.lua",
           "/kari/boot/startup.lua",
           "/kari/os/kari_lib.lua",
           "/kari/pc/agent.lua",

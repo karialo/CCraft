@@ -21,3 +21,4 @@ computercraft/logs/
 # Node, python, etc (if any)
 node_modules/
 __pycache__/
+data/
