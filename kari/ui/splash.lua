@@ -1,9 +1,11 @@
--- /kari/ui/splash.lua — cinematic boot splash with role-specific palettes (fixed clamp)
+-- /kari/ui/splash.lua — cinematic boot splash with role palettes (v1.1 safe)
+-- Prints "Splash v1.1" in corner at start so you know it's the new one.
 
 local M = {}
 
 -- ===== helpers =====
 local function clamp(n, a, b)
+  n = tonumber(n) or 0
   if n < a then return a elseif n > b then return b else return n end
 end
 
@@ -30,52 +32,32 @@ local P = {
   default = {
     rail_top   = {colors.black, colors.gray, colors.lightGray},
     rail_bot   = {colors.lightGray, colors.gray, colors.black},
-    panel_main = colors.gray,
-    panel_hi   = colors.lightGray,
-    panel_sh   = colors.black,
-    text_main  = colors.white,
-    text_dim   = colors.lightGray,
-    accent     = colors.green,
+    panel_main = colors.gray,     panel_hi   = colors.lightGray, panel_sh   = colors.black,
+    text_main  = colors.white,    text_dim   = colors.lightGray, accent     = colors.green,
   },
-  pc = { -- steel blue
+  pc = {
     rail_top   = {colors.black, colors.blue, colors.lightBlue},
     rail_bot   = {colors.lightBlue, colors.blue, colors.black},
-    panel_main = colors.gray,
-    panel_hi   = colors.lightGray,
-    panel_sh   = colors.black,
-    text_main  = colors.white,
-    text_dim   = colors.lightGray,
-    accent     = colors.cyan,
+    panel_main = colors.gray,     panel_hi   = colors.lightGray, panel_sh   = colors.black,
+    text_main  = colors.white,    text_dim   = colors.lightGray, accent     = colors.cyan,
   },
-  turtle = { -- bio green
+  turtle = {
     rail_top   = {colors.black, colors.green, colors.lime},
     rail_bot   = {colors.lime, colors.green, colors.black},
-    panel_main = colors.green,
-    panel_hi   = colors.lime,
-    panel_sh   = colors.black,
-    text_main  = colors.white,
-    text_dim   = colors.lightGray,
-    accent     = colors.lime,
+    panel_main = colors.green,    panel_hi   = colors.lime,      panel_sh   = colors.black,
+    text_main  = colors.white,    text_dim   = colors.lightGray, accent     = colors.lime,
   },
-  tablet = { -- amber
+  tablet = {
     rail_top   = {colors.black, colors.orange, colors.yellow},
     rail_bot   = {colors.yellow, colors.orange, colors.black},
-    panel_main = colors.yellow,
-    panel_hi   = colors.orange,
-    panel_sh   = colors.brown,
-    text_main  = colors.black,
-    text_dim   = colors.gray,
-    accent     = colors.red,
+    panel_main = colors.yellow,   panel_hi   = colors.orange,    panel_sh   = colors.brown,
+    text_main  = colors.black,    text_dim   = colors.gray,      accent     = colors.red,
   },
-  hub = { -- royal purple
+  hub = {
     rail_top   = {colors.black, colors.purple, colors.magenta},
     rail_bot   = {colors.magenta, colors.purple, colors.black},
-    panel_main = colors.purple,
-    panel_hi   = colors.magenta,
-    panel_sh   = colors.black,
-    text_main  = colors.white,
-    text_dim   = colors.lightGray,
-    accent     = colors.lightGray,
+    panel_main = colors.purple,   panel_hi   = colors.magenta,   panel_sh   = colors.black,
+    text_main  = colors.white,    text_dim   = colors.lightGray, accent     = colors.lightGray,
   },
 }
 
@@ -117,12 +99,13 @@ local function kvBlock(y, kv, pal)
   end
 end
 
+-- SUPER SAFE progress: never crashes even with bad input
 local function progress(y, pct, pal)
-  pct = clamp(tonumber(pct) or 0, 0, 1)  -- safety
   local w,_=w_h()
   local x=6
-  local width=w-12
-  local fill=math.floor(width*pct)
+  local width=math.max(1, w-12)
+  local p = clamp(pct, 0, 1)         -- coerce to 0..1
+  local fill=math.floor(width * p)
   term.setCursorPos(x,y); term.setTextColor(pal.text_dim); term.setBackgroundColor(colors.black)
   term.write("["..string.rep(" ", width).."]")
   term.setCursorPos(x+1,y); term.setBackgroundColor(pal.accent); term.write(string.rep(" ", fill))
@@ -140,7 +123,7 @@ local function scanline(y, h, pal)
 end
 
 local function pulse(times, ms, pal)
-  for i=1,times do
+  for i=1,(times or 6) do
     term.setTextColor((i%2==0) and pal.text_main or pal.text_dim)
     sleep((ms or 80)/1000)
   end
@@ -154,9 +137,12 @@ function M.show(opts)
   local title    = opts.title    or "K . A . R . I"
   local subtitle = opts.subtitle or "Boot sequence"
   local info     = opts.info     or {}
-  local steps    = clamp(tonumber(opts.steps) or 20, 1, 60)
+  local steps    = clamp(opts.steps or 20, 1, 60)
 
   term.setBackgroundColor(colors.black); term.setTextColor(colors.white); term.clear()
+
+  -- tiny version mark so we know this file loaded
+  term.setCursorPos(2,2); term.setTextColor(colors.gray); term.write("Splash v1.1"); term.setTextColor(colors.white)
 
   local w,h = w_h()
   drawGradientStripe(1, 2, pal.rail_top)
@@ -172,7 +158,12 @@ function M.show(opts)
   progress(barY, 0, pal)
   parallel.waitForAny(
     function() scanline(panelY+1, panelH-2, pal) end,
-    function() for i=1,steps do progress(barY, i/steps, pal); sleep(0.03) end end
+    function()
+      for i=1,steps do
+        progress(barY, i/steps, pal)   -- i/steps is always numeric now
+        sleep(0.03)
+      end
+    end
   )
   pulse(6, 80, pal)
 end
