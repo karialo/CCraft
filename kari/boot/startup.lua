@@ -1,4 +1,4 @@
--- /kari/boot/startup.lua - robust boot (ASCII safe) + updater + radios + GPSD + role launch
+-- /kari/boot/startup.lua - robust boot (ASCII safe) + updater self-heal + splash + radios + GPSD + role launch
 
 -- ---------- config / utils ----------
 local CFG = "/kari/data/config"
@@ -76,7 +76,7 @@ local function setDefaultLabel(role)
   end
 end
 
--- Build a helpful wget hint for missing updater/install
+-- Helpful wget hints
 local function show_wget_hints()
   local base = "https://raw.githubusercontent.com/karialo/CCraft/main"
   print()
@@ -97,7 +97,10 @@ end
 -- ---------- boot ----------
 cls(); slow("K.A.R.I OS - initializing...")
 
--- must have updater (self-heal if missing)
+-- Ensure /startup dir exists (used for root scripts if any)
+if not fs.exists("/startup") then fs.makeDir("/startup") end
+
+-- Must have updater (self-heal if missing)
 if not has("/kari/bin/update.lua") then
   warn("Missing /kari/bin/update.lua (updater). Attempting to fetch from GitHub...")
   local url="https://raw.githubusercontent.com/karialo/CCraft/main/kari/bin/update.lua"
@@ -113,14 +116,30 @@ if not has("/kari/bin/update.lua") then
   end
 end
 
--- first sync (allows installer to drop just startup + updater)
+-- First sync (allows installer to drop just startup + updater)
 spinnerRun("Running updater:", "/kari/bin/update.lua", "--first-boot")
 
--- resolve role/target
+-- Resolve role/target
 local cfg  = safe_read_cfg()
 local role = cfg.role or (turtle and "turtle" or (pocket and "tablet" or "pc"))
 
--- prefer supervisor for hub so daemons auto-restart
+-- >>> Cinematic splash (after we know role/ID/label)
+if fs.exists("/kari/ui/splash.lua") then
+  local splash = dofile("/kari/ui/splash.lua")
+  local id = tostring(os.getComputerID() or "?")
+  splash.show{
+    title    = "K . A . R . I",
+    subtitle = "Booting "..role,
+    info     = {
+      {"ID", id},
+      {"Role", role},
+      {"Label", os.getComputerLabel() or "unset"},
+    },
+    steps    = 20,
+  }
+end
+
+-- Prefer supervisor for hub so daemons auto-restart
 local TARGET = ({
   turtle = "/kari/turtles/agent.lua",
   tablet = "/kari/tablet/tvcd.lua",
@@ -128,25 +147,25 @@ local TARGET = ({
   hub    = "/kari/hub/svcd.lua",
 })[role] or "/kari/os/main.lua"
 
--- radios first
+-- Radios first
 openWireless()
 
--- optional: register hostname for discovery (CCTweaked has rednet.host)
+-- Optional: register hostname for discovery (CCTweaked has rednet.host)
 if rednet.host and type(rednet.host)=="function" then
   pcall(rednet.host, cfg.proto or "kari.bus.v2", (cfg.name or role or "kari"))
 end
 
--- launch gps daemon if config says so (or always for hub)
+-- Launch GPS daemon if config says so (or always for hub)
 local wantGPS = (cfg.gps == true) or (type(cfg.gps)=="table" and (cfg.gps.enabled or cfg.gps.host)) or (role=="hub")
 if wantGPS and has("/kari/services/gpsd.lua") then
   if shell.openTab then shell.openTab("/kari/services/gpsd.lua")
   else parallel.waitForAny(function() shell.run("/kari/services/gpsd.lua") end, function() sleep(0) end) end
 end
 
--- set a sensible default label
+-- Set a sensible default label
 setDefaultLabel(role)
 
--- ensure target exists, try one more sync if not
+-- Ensure target exists, try one more sync if not
 if not has(TARGET) then
   warn("Role program missing: " .. TARGET)
   print("Attempting one more sync...")
@@ -158,7 +177,7 @@ if not has(TARGET) then
   end
 end
 
--- banner
+-- Banner
 local rc = safe_read_remote()
 local serverStr = rc.base or cfg.server or "unset"
 print(("Role: %s   Target: %s"):format(role, TARGET))
@@ -166,5 +185,5 @@ print(("Server: %s"):format(tostring(serverStr)))
 print(("Proto: %s"):format(tostring(cfg.proto or "kari.bus.v2")))
 print(string.rep("-", 40))
 
--- hand off
+-- Handoff
 shell.run(TARGET)
