@@ -78,26 +78,39 @@ end
 
 -- Build a helpful wget hint for missing updater/install
 local function show_wget_hints()
-  local rc = safe_read_remote()
-  local base = rc.base or "http://freyja-nix.tail8f2b9f.ts.net:13337"
-  -- trim trailing slashes
-  base = tostring(base):gsub("/+$","")
+  local base = "https://raw.githubusercontent.com/karialo/CCraft/main"
   print()
   print("Tip: fetch the installer or updater with wget:")
-  print("  wget \""..base.."/files/kari/install.lua\" install.lua")
-  print("  wget \""..base.."/files/kari/bin/update.lua\" /kari/bin/update.lua")
+  print("  wget \""..base.."/install.lua\" install.lua")
+  print("  wget \""..base.."/kari/bin/update.lua\" /kari/bin/update.lua")
   print()
   print("Then run:  install   OR   /kari/bin/update.lua --sync")
+end
+
+local function fetch(url)
+  if not http then return nil,"http disabled" end
+  local ok,res=pcall(http.get,url,{["User-Agent"]="KARI-Boot"})
+  if ok and res then local b=res.readAll() or ""; res.close(); if #b>0 then return b end end
+  return nil,"net"
 end
 
 -- ---------- boot ----------
 cls(); slow("K.A.R.I OS - initializing...")
 
--- must have updater
+-- must have updater (self-heal if missing)
 if not has("/kari/bin/update.lua") then
-  warn("Missing /kari/bin/update.lua (updater).")
-  show_wget_hints()
-  return
+  warn("Missing /kari/bin/update.lua (updater). Attempting to fetch from GitHub...")
+  local url="https://raw.githubusercontent.com/karialo/CCraft/main/kari/bin/update.lua"
+  local body,err = fetch(url)
+  if body then
+    mk("/kari/bin")
+    local h=fs.open("/kari/bin/update.lua","w"); h.write(body); h.close()
+    print("Updater installed from GitHub.")
+  else
+    warn("Failed to fetch updater ("..tostring(err)..").")
+    show_wget_hints()
+    return
+  end
 end
 
 -- first sync (allows installer to drop just startup + updater)
