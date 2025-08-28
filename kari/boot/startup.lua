@@ -139,6 +139,14 @@ spinnerRun("Running updater:", "/kari/bin/update.lua", {"--first-boot"})
 local cfg  = safe_read_cfg()
 local role = cfg.role or (turtle and "turtle" or (pocket and "tablet" or "pc"))
 
+-- ===== NEW: hardware-aware role gating =====
+local isAdvanced = (term.isColor and term.isColor()) or (term.isColour and term.isColour()) or false
+local advanced_only = { pc=true, hub=true }   -- roles that expect multi-tab / colors
+if advanced_only[role] and not isAdvanced then
+  -- downgrade gracefully for normal PCs
+  role = "workstation"
+end
+
 -- >>> Cinematic splash (after we know role/ID/label)
 if fs.exists("/kari/ui/splash.lua") then
   local splash = dofile("/kari/ui/splash.lua")
@@ -157,12 +165,14 @@ if fs.exists("/kari/ui/splash.lua") then
   sleep(3)                -- linger on glam panel
 end
 
--- Prefer supervisor for hub so daemons auto-restart
+-- Target map with new roles
 local TARGET = ({
-  turtle = "/kari/turtles/agent.lua",
-  tablet = "/kari/tablet/tvcd.lua",
-  pc     = "/kari/pc/agent.lua",
-  hub    = "/kari/hub/svcd.lua",
+  gps         = "/kari/os/main.lua",     -- simple UI/console
+  workstation = "/kari/os/main.lua",     -- single-process UI
+  turtle      = "/kari/turtles/agent.lua",
+  tablet      = "/kari/tablet/tvcd.lua",
+  pc          = "/kari/pc/agent.lua",    -- advanced-only (enforced above)
+  hub         = "/kari/hub/svcd.lua"     -- advanced-only
 })[role] or "/kari/os/main.lua"
 
 -- Radios first
@@ -173,13 +183,32 @@ if rednet.host and type(rednet.host)=="function" then
   pcall(rednet.host, (cfg.proto or "kari.bus.v2"), (cfg.name or role or "kari"))
 end
 
--- Launch gps daemon if config says so (or always for hub)
-local wantGPS = (cfg.gps == true) or (type(cfg.gps)=="table" and (cfg.gps.enabled or cfg.gps.host)) or (role=="hub")
+-- ---- Services policy -------------------------------------------------------
+-- GPS daemon: always for 'gps'; allowed via cfg.gps; always for hub.
+local wantGPS = (role=="gps")
+  or (type(cfg.gps)=="table" and (cfg.gps.enabled or cfg.gps.host))
+  or (cfg.gps == true)
+  or (role=="hub")
+
 if wantGPS and has("/kari/services/gpsd.lua") then
-  if shell.openTab then shell.openTab("/kari/services/gpsd.lua")
+  if shell.openTab and isAdvanced then
+    shell.openTab("/kari/services/gpsd.lua")
   else
+    -- single-thread friendly launch
     parallel.waitForAny(
       function() os.run(setmetatable({print=VANILLA_PRINT},{__index=_G}), "/kari/services/gpsd.lua") end,
+      function() sleep(0) end
+    )
+  end
+end
+
+-- Controller daemon (pcd): only on advanced boxes and controller-ish roles
+if isAdvanced and (role=="pc" or role=="hub" or role=="tablet") and has("/kari/services/pcd.lua") then
+  if shell.openTab then
+    shell.openTab("/kari/services/pcd.lua")
+  else
+    parallel.waitForAny(
+      function() os.run(setmetatable({print=VANILLA_PRINT},{__index=_G}), "/kari/services/pcd.lua") end,
       function() sleep(0) end
     )
   end

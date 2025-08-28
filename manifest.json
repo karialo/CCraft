@@ -5,25 +5,32 @@
   "channels": {
     "stable": {
       "roles": {
-        "turtle": [
+        "gps": [
           "/kari/ui/splash.lua",
           "/startup/startup.lua",
           "/kari/bin/update.lua",
           "/kari/boot/startup.lua",
           "/kari/os/kari_lib.lua",
-          "/kari/turtles/agent.lua",
-          "/kari/turtles/report_files.lua",
-          "/kari/services/gpsd.lua"
+          "/kari/services/gpsd.lua",
+          "/kari/os/main.lua"
         ],
-        "tablet": [
+        "workstation": [
           "/kari/ui/splash.lua",
-          "/startup/startup.lua",       
-          "/kari/update.lua",
+          "/startup/startup.lua",
+          "/kari/bin/update.lua",
           "/kari/boot/startup.lua",
           "/kari/os/kari_lib.lua",
-          "/kari/os/main.lua",
-          "/kari/os/tablet_input.lua",
-          "/kari/tablet/tvcd.lua",
+          "/kari/os/main.lua"
+        ],
+        "pc": [
+          "/kari/ui/splash.lua",
+          "/startup/startup.lua",
+          "/kari/bin/update.lua",
+          "/kari/boot/startup.lua",
+          "/kari/os/kari_lib.lua",
+          "/kari/pc/agent.lua",
+          "/kari/pc/cfgfiles.lua",
+          "/kari/pc/report_files.lua",
           "/kari/services/pcd.lua",
           "/kari/services/gpsd.lua"
         ],
@@ -40,16 +47,26 @@
           "/kari/services/gpsd.lua",
           "/kari/os/main.lua"
         ],
-        "pc": [
+        "tablet": [
           "/kari/ui/splash.lua",
           "/startup/startup.lua",
           "/kari/bin/update.lua",
           "/kari/boot/startup.lua",
           "/kari/os/kari_lib.lua",
-          "/kari/pc/agent.lua",
-          "/kari/pc/cfgfiles.lua",
-          "/kari/pc/report_files.lua",
+          "/kari/os/main.lua",
+          "/kari/os/tablet_input.lua",
+          "/kari/tablet/tvcd.lua",
           "/kari/services/pcd.lua",
+          "/kari/services/gpsd.lua"
+        ],
+        "turtle": [
+          "/kari/ui/splash.lua",
+          "/startup/startup.lua",
+          "/kari/bin/update.lua",
+          "/kari/boot/startup.lua",
+          "/kari/os/kari_lib.lua",
+          "/kari/turtles/agent.lua",
+          "/kari/turtles/report_files.lua",
           "/kari/services/gpsd.lua"
         ]
       }
