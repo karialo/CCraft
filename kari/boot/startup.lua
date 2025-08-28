@@ -1,4 +1,5 @@
--- /kari/boot/startup.lua - robust boot (ASCII safe) + updater self-heal + splash + radios + GPSD + role launch
+-- /kari/boot/startup.lua
+-- robust boot (ASCII-safe local logger) + updater self-heal + cinematic splash + radios + GPSD + role launch
 
 -- ---------- config / utils ----------
 local CFG = "/kari/data/config"
@@ -8,7 +9,10 @@ local unser = textutils.unserialize or textutils.unserialise
 local function has(p) return fs.exists(p) and not fs.isDir(p) end
 local function mk(p) if not fs.exists(p) then fs.makeDir(p) end end
 
--- ascii-safe string + print
+-- keep vanilla print for child programs & bios
+local VANILLA_PRINT = print
+
+-- ascii-safe LOCAL logger (do NOT override global print)
 local function ascii(s)
   s = tostring(s or "")
   s = s:gsub("\r\n", "\n"):gsub("\r", "\n")
@@ -18,11 +22,10 @@ local function ascii(s)
   s = s:gsub("[^\n\r\t\032-\126]","?")
   return s
 end
-local _print = print
-print = function(...)
+local function p(...)
   local t = {}
   for i=1,select("#", ...) do t[#t+1] = tostring(select(i, ...)) end
-  _print(ascii(table.concat(t," ")))
+  VANILLA_PRINT(ascii(table.concat(t," ")))
 end
 
 local function safe_unser_file(path)
@@ -36,8 +39,8 @@ local function safe_read_remote() return safe_unser_file(REM) end
 
 local function setfg(bg,fg) term.setBackgroundColor(bg); term.setTextColor(fg) end
 local function cls() setfg(colors.black,colors.white); term.clear(); term.setCursorPos(1,1) end
-local function slow(s,dt) dt=dt or 0.01 for i=1,#s do write(s:sub(i,i)); sleep(dt) end print() end
-local function warn(msg) term.setTextColor(colors.red); print(msg); term.setTextColor(colors.white) end
+local function slow(s,dt) dt=dt or 0.01 for i=1,#s do write(s:sub(i,i)); sleep(dt) end p() end
+local function warn(msg) term.setTextColor(colors.red); p(msg); term.setTextColor(colors.white) end
 
 local function openWireless()
   local opened=false
@@ -54,7 +57,7 @@ end
 local function spinnerRun(label, cmd, ...)
   local args={...}
   local w,_=term.getSize()
-  term.setCursorPos(1,2); print(string.rep("-", w))
+  term.setCursorPos(1,2); VANILLA_PRINT(string.rep("-", w))
   term.setCursorPos(1,3); write(label .. " ")
   local phases={"|","/","-","\\"}; local i=1; local done=false; local ok=false
   local function spin()
@@ -63,9 +66,16 @@ local function spinnerRun(label, cmd, ...)
       sleep(0.1)
     end
   end
-  local function runit() ok=shell.run(cmd, table.unpack(args)); done=true end
+  local function runit()
+    -- ensure child program uses vanilla print
+    local saved = _G.print
+    _G.print = VANILLA_PRINT
+    ok = shell.run(cmd, table.unpack(args))
+    _G.print = saved
+    done=true
+  end
   parallel.waitForAny(spin, runit)
-  term.setCursorPos(#label+2,3); write(ok and "[OK]" or "[ERR]"); print()
+  term.setCursorPos(#label+2,3); write(ok and "[OK]" or "[ERR]"); p()
   return ok
 end
 
@@ -79,12 +89,12 @@ end
 -- Helpful wget hints
 local function show_wget_hints()
   local base = "https://raw.githubusercontent.com/karialo/CCraft/main"
-  print()
-  print("Tip: fetch the installer or updater with wget:")
-  print("  wget \""..base.."/install.lua\" install.lua")
-  print("  wget \""..base.."/kari/bin/update.lua\" /kari/bin/update.lua")
-  print()
-  print("Then run:  install   OR   /kari/bin/update.lua --sync")
+  p()
+  p("Tip: fetch the installer or updater with wget:")
+  p("  wget \""..base.."/install.lua\" install.lua")
+  p("  wget \""..base.."/kari/bin/update.lua\" /kari/bin/update.lua")
+  p()
+  p("Then run:  install   OR   /kari/bin/update.lua --sync")
 end
 
 local function fetch(url)
@@ -108,7 +118,7 @@ if not has("/kari/bin/update.lua") then
   if body then
     mk("/kari/bin")
     local h=fs.open("/kari/bin/update.lua","w"); h.write(body); h.close()
-    print("Updater installed from GitHub.")
+    p("Updater installed from GitHub.")
   else
     warn("Failed to fetch updater ("..tostring(err)..").")
     show_wget_hints()
@@ -127,16 +137,19 @@ local role = cfg.role or (turtle and "turtle" or (pocket and "tablet" or "pc"))
 if fs.exists("/kari/ui/splash.lua") then
   local splash = dofile("/kari/ui/splash.lua")
   local id = tostring(os.getComputerID() or "?")
+  -- If you added role palettes in splash.lua, pass role here:
   splash.show{
+    role     = role,
     title    = "K . A . R . I",
-    subtitle = "Booting "..role,
+    subtitle = "Boot sequence",
     info     = {
       {"ID", id},
       {"Role", role},
       {"Label", os.getComputerLabel() or "unset"},
     },
-    steps    = 20,
+    steps    = 40,   -- bigger = longer animation
   }
+  sleep(3)          -- linger on glam panel
 end
 
 -- Prefer supervisor for hub so daemons auto-restart
@@ -155,7 +168,7 @@ if rednet.host and type(rednet.host)=="function" then
   pcall(rednet.host, cfg.proto or "kari.bus.v2", (cfg.name or role or "kari"))
 end
 
--- Launch GPS daemon if config says so (or always for hub)
+-- Launch gps daemon if config says so (or always for hub)
 local wantGPS = (cfg.gps == true) or (type(cfg.gps)=="table" and (cfg.gps.enabled or cfg.gps.host)) or (role=="hub")
 if wantGPS and has("/kari/services/gpsd.lua") then
   if shell.openTab then shell.openTab("/kari/services/gpsd.lua")
@@ -168,7 +181,7 @@ setDefaultLabel(role)
 -- Ensure target exists, try one more sync if not
 if not has(TARGET) then
   warn("Role program missing: " .. TARGET)
-  print("Attempting one more sync...")
+  p("Attempting one more sync...")
   spinnerRun("Sync:", "/kari/bin/update.lua", "--sync")
   if not has(TARGET) then
     warn("Still missing: " .. TARGET)
@@ -177,13 +190,6 @@ if not has(TARGET) then
   end
 end
 
--- Banner
-local rc = safe_read_remote()
-local serverStr = rc.base or cfg.server or "unset"
-print(("Role: %s   Target: %s"):format(role, TARGET))
-print(("Server: %s"):format(tostring(serverStr)))
-print(("Proto: %s"):format(tostring(cfg.proto or "kari.bus.v2")))
-print(string.rep("-", 40))
-
--- Handoff
+-- No extra banner printing here—splash is the banner.
+-- Handoff to role program
 shell.run(TARGET)
