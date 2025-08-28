@@ -7,6 +7,7 @@
       "roles": {
         "turtle": [
           "/startup.lua",
+          "/kari/bin/update.lua",
           "/kari/boot/startup.lua",
           "/kari/os/kari_lib.lua",
           "/kari/turtles/agent.lua",
@@ -15,6 +16,7 @@
         ],
         "tablet": [
           "/startup.lua",
+          "/kari/bin/update.lua",
           "/kari/boot/startup.lua",
           "/kari/os/kari_lib.lua",
           "/kari/os/main.lua",
@@ -25,6 +27,7 @@
         ],
         "hub": [
           "/startup.lua",
+          "/kari/bin/update.lua",
           "/kari/boot/startup.lua",
           "/kari/os/kari_lib.lua",
           "/kari/hub/hubd.lua",
@@ -36,6 +39,7 @@
         ],
         "pc": [
           "/startup.lua",
+          "/kari/bin/update.lua",
           "/kari/boot/startup.lua",
           "/kari/os/kari_lib.lua",
           "/kari/pc/agent.lua",
