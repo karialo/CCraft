@@ -1,6 +1,6 @@
 -- /kari/boot/startup.lua
 -- robust boot (ASCII-safe local logger) + updater self-heal + cinematic splash + radios + GPSD + role launch
--- Updater runs in a CLEAN sandbox via os.run to avoid global bleed/recursion
+-- Updater runs in a CLEAN sandbox; compatible with Lua 5.1 (CraftOS)
 
 -- ---------- config / utils ----------
 local CFG = "/kari/data/config"
@@ -34,7 +34,6 @@ local function safe_unser_file(path)
   local h=fs.open(path,"r"); local s=h.readAll(); h.close()
   local ok,t=pcall(unser,s); return (ok and type(t)=="table") and t or {}
 end
-
 local function safe_read_cfg() return safe_unser_file(CFG) end
 local function safe_read_remote() return safe_unser_file(REM) end
 
@@ -55,18 +54,18 @@ local function openWireless()
   return opened
 end
 
--- run a program in a CLEAN sandbox with vanilla print
-local function run_sandboxed(path, ...)
+-- run a program in a CLEAN sandbox with vanilla print (no varargs used)
+local function run_sandboxed(path, args)
+  args = args or {}
   local env = setmetatable({}, { __index = _G })
   env.print = VANILLA_PRINT
-  -- (Leave everything else inherited read-only via __index)
-  local ok, err = pcall(function() os.run(env, path, ...) end)
-  if not ok then VANILLA_PRINT(err) end
+  local ok, err = pcall(function() os.run(env, path, unpack(args)) end)
+  if not ok and err then VANILLA_PRINT(err) end
   return ok
 end
 
-local function spinnerRun(label, path, ...)
-  local args={...}
+local function spinnerRun(label, path, args)
+  args = args or {}
   local w,_=term.getSize()
   term.setCursorPos(1,2); VANILLA_PRINT(string.rep("-", w))
   term.setCursorPos(1,3); write(label .. " ")
@@ -77,7 +76,10 @@ local function spinnerRun(label, path, ...)
       sleep(0.1)
     end
   end
-  local function runit() ok = run_sandboxed(path, table.unpack(args)); done=true end
+  local function runit()
+    ok = run_sandboxed(path, args)
+    done = true
+  end
   parallel.waitForAny(spin, runit)
   term.setCursorPos(#label+2,3); write(ok and "[OK]" or "[ERR]"); p()
   return ok
@@ -131,7 +133,7 @@ if not has("/kari/bin/update.lua") then
 end
 
 -- First sync (allows installer to drop just startup + updater)
-spinnerRun("Running updater:", "/kari/bin/update.lua", "--first-boot")
+spinnerRun("Running updater:", "/kari/bin/update.lua", {"--first-boot"})
 
 -- Resolve role/target
 local cfg  = safe_read_cfg()
@@ -175,7 +177,12 @@ end
 local wantGPS = (cfg.gps == true) or (type(cfg.gps)=="table" and (cfg.gps.enabled or cfg.gps.host)) or (role=="hub")
 if wantGPS and has("/kari/services/gpsd.lua") then
   if shell.openTab then shell.openTab("/kari/services/gpsd.lua")
-  else parallel.waitForAny(function() os.run(setmetatable({print=VANILLA_PRINT},{__index=_G}), "/kari/services/gpsd.lua") end, function() sleep(0) end) end
+  else
+    parallel.waitForAny(
+      function() os.run(setmetatable({print=VANILLA_PRINT},{__index=_G}), "/kari/services/gpsd.lua") end,
+      function() sleep(0) end
+    )
+  end
 end
 
 -- Set a sensible default label
@@ -185,7 +192,7 @@ setDefaultLabel(role)
 if not has(TARGET) then
   warn("Role program missing: " .. TARGET)
   p("Attempting one more sync...")
-  spinnerRun("Sync:", "/kari/bin/update.lua", "--sync")
+  spinnerRun("Sync:", "/kari/bin/update.lua", {"--sync"})
   if not has(TARGET) then
     warn("Still missing: " .. TARGET)
     show_wget_hints()
