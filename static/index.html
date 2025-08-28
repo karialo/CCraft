@@ -1,0 +1,196 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>K.A.R.I HQ — Fleet</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{
+    --bg:#0b0e12; --fg:#e5e7eb; --muted:#9aa0a6; --card:#10151c;
+    --line:#1c2631; --ok:#38c172; --off:#6b7280; --btn:#1f2937;
+    --accent:#60a5fa; --warn:#f59e0b; --bad:#ef4444;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,Segoe UI,Roboto,Helvetica,Arial}
+  header{position:sticky;top:0;z-index:2;background:#0b0e12cc;backdrop-filter:blur(6px) saturate(120%);border-bottom:1px solid var(--line);padding:14px 18px}
+  h1{margin:0;font-size:18px;letter-spacing:.08em}
+  main{padding:16px;display:grid;gap:12px;grid-template-columns:1.1fr .9fr}
+  @media (max-width: 1100px){ main{grid-template-columns:1fr} }
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .muted{color:var(--muted)}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  button{background:var(--btn);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer}
+  button:hover{border-color:#334155}
+  input,select{background:#0f141b;color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+  .badge{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line)}
+  .online{color:var(--ok);border-color:#1e3a29}
+  .offline{color:#9ca3af;border-color:#374151}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .list{max-height:260px;overflow:auto;background:#0c1117;border:1px solid var(--line);border-radius:8px;padding:8px}
+  .tiny{font-size:12px}
+  .actions{display:flex;gap:6px}
+  canvas{width:100%;height:260px;background:#0c0f14;border:1px solid var(--line);border-radius:8px}
+  .title{display:flex;align-items:center;gap:10px}
+  .pill{padding:2px 8px;border-radius:999px;background:#0d1824;border:1px solid #1d2a38;color:#9cc1ff}
+  /* auth banner */
+  #authBanner{position:sticky;top:54px;z-index:3;background:#111827;border-bottom:1px solid #223047;padding:8px 16px;display:none}
+  #authBanner .warn{color:var(--warn)}
+  #authBanner input{width:320px;max-width:60vw}
+  #authBanner .err{color:var(--bad);margin-left:8px}
+</style>
+
+<header><h1>K.A.R.I HQ — Fleet</h1></header>
+<div id="authBanner" class="row mono tiny">
+  <span class="warn">401 shield up:</span>
+  <span>enter token →</span>
+  <input id="tokenInput" placeholder="KARI_TOKEN" class="mono" />
+  <button id="btnLogin">Login</button>
+  <button id="btnLogout" title="Clear cookie + local token">Logout</button>
+  <span id="authMsg" class="err"></span>
+</div>
+
+<main>
+  <section class="card">
+    <div class="title"><h2 style="margin:0">Map</h2><span class="pill tiny mono" id="mapStats">–</span></div>
+    <canvas id="map" width="800" height="260"></canvas>
+    <div class="tiny muted">Shows devices that report coordinates. Auto-scales to current extents.</div>
+  </section>
+
+  <section class="card">
+    <h2 style="margin:0 0 8px">GPS Anchors</h2>
+    <div id="anchorsList" class="list mono tiny">loading…</div>
+  </section>
+
+  <section class="card">
+    <h2 style="margin:0 0 8px">Repo Tree</h2>
+    <div class="row" style="gap:8px">
+      <label class="tiny muted">Subdir:</label>
+      <input id="subdir" value="kari/" class="mono" style="flex:1"/>
+      <button id="loadTree">Load</button>
+    </div>
+    <div id="tree" class="list mono tiny" style="margin-top:8px">loading…</div>
+  </section>
+
+  <section class="card">
+    <h2 style="margin:0 0 8px">Jobs</h2>
+    <div class="grid2">
+      <div>
+        <label class="tiny muted">Turtle ID</label>
+        <input id="jobTid" value="4" class="mono" style="width:100%">
+      </div>
+      <div>
+        <label class="tiny muted">Length</label>
+        <input id="jobLen" value="40" class="mono" style="width:100%">
+      </div>
+    </div>
+    <div class="actions" style="margin-top:8px">
+      <button id="queueTunnel">Run Tunnel</button>
+      <button id="queueSelf">Queue Self-Update</button>
+    </div>
+    <div id="jobsOut" class="list mono tiny" style="margin-top:8px">no jobs yet</div>
+  </section>
+
+  <section class="card" style="grid-column:1 / -1">
+    <h2 style="margin:0 0 8px">Devices</h2>
+    <div id="devices" class="grid2"></div>
+  </section>
+</main>
+
+<script>
+/* -------------------- token plumbing -------------------- */
+const QS_TOKEN = new URLSearchParams(location.search).get('t') || '';
+const LS_KEY   = 'kari_token';
+
+function getCookie(name){ return document.cookie.split('; ').find(r=>r.startsWith(name+'='))?.split('=')[1]; }
+function setCookie(name, value){ document.cookie = `${name}=${value}; Path=/; SameSite=Lax`; }
+function clearCookie(name){ document.cookie = `${name}=; Path=/; Max-Age=0`; }
+
+let TOKEN = QS_TOKEN || localStorage.getItem(LS_KEY) || getCookie('kari_token') || '';
+
+function setToken(t){
+  TOKEN = t || '';
+  if (TOKEN){
+    localStorage.setItem(LS_KEY, TOKEN);
+    setCookie('kari_token', TOKEN);
+  } else {
+    localStorage.removeItem(LS_KEY);
+    clearCookie('kari_token');
+  }
+}
+
+function buildUrl(p){
+  const u = new URL(p, location.origin);
+  // legacy ?t support is gone unless you want it back
+  return u.toString();
+}
+async function kariFetch(path, opts = {}){
+  const headers = new Headers(opts.headers || {});
+  if (TOKEN) headers.set('X-KARI-TOKEN', TOKEN);
+  return fetch(buildUrl(path), { ...opts, headers });
+}
+async function jget(p){ const r=await kariFetch(p); if(!r.ok) throw new Error(`${r.status} ${await r.text()}`); return r.json(); }
+async function jpost(p,b){ const r=await kariFetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); if(!r.ok) throw new Error(`${r.status} ${await r.text()}`); return r.json(); }
+async function jdel(p){ const r=await kariFetch(p,{method:'DELETE'}); return r.ok; }
+
+async function loginFlow(token){
+  setToken(token);
+  try{ await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})}); }catch(e){}
+  location.href=location.pathname;
+}
+async function logoutFlow(){
+  try{ await fetch('/auth/logout',{method:'POST'}); }catch(e){}
+  setToken('');
+  location.href=location.pathname;
+}
+
+/* --------------- UI functions --------------- */
+function el(tag,attrs={},...kids){ const e=document.createElement(tag); for(const[k,v] of Object.entries(attrs)){ if(k==='class')e.className=v; else if(k==='text')e.textContent=v; else if(k==='onclick')e.onclick=v; else e.setAttribute(k,v);} kids.forEach(k=>e.append(k)); return e; }
+
+function drawMap(devs){ const c=document.getElementById('map'),ctx=c.getContext('2d'); ctx.clearRect(0,0,c.width,c.height);
+  const pts=devs.filter(d=>d.pos&&Number.isFinite(d.pos.x)&&Number.isFinite(d.pos.z));
+  document.getElementById('mapStats').textContent=pts.length?`${pts.length} plotted`:'no coords'; if(!pts.length)return;
+  const xs=pts.map(p=>p.pos.x),zs=pts.map(p=>p.pos.z); let xmin=Math.min(...xs),xmax=Math.max(...xs),zmin=Math.min(...zs),zmax=Math.max(...zs);
+  if(xmin===xmax){xmin-=10;xmax+=10} if(zmin===zmax){zmin-=10;zmax+=10}
+  const pad=24,W=c.width-pad*2,H=c.height-pad*2; const toXY=p=>[pad+((p.pos.x-xmin)/(xmax-xmin))*W,pad+((p.pos.z-zmin)/(zmax-zmin))*H];
+  ctx.strokeStyle='#314255';ctx.globalAlpha=.4;ctx.strokeRect(pad,pad,W,H);ctx.globalAlpha=1;
+  pts.forEach(p=>{const[x,y]=toXY(p);ctx.beginPath();ctx.arc(x,y,4.5,0,Math.PI*2);ctx.fillStyle=p.online?'#38c172':'#6b7280';ctx.fill();ctx.font='12px ui-monospace,monospace';ctx.fillStyle='#cbd5e1';ctx.fillText((p.alias||p.label||p.id),x+6,y-6);});
+}
+function anchorListFrom(devs){ const box=document.getElementById('anchorsList'); const anchors=devs.filter(d=>d.pos&&Number.isFinite(d.pos.x)&&Number.isFinite(d.pos.y)&&Number.isFinite(d.pos.z)); box.innerHTML=''; if(!anchors.length){box.textContent='none yet';return;} anchors.forEach(a=>{const row=el('div',{class:'row mono tiny'},el('div',{text:`${a.alias||a.label||a.id}  (${a.pos.x},${a.pos.y},${a.pos.z})`}),el('span',{class:`badge ${a.online?'online':'offline'}`,text:a.online?'ONLINE':'OFFLINE'})); box.append(row);}); }
+function deviceCard(d){ const head=el('div',{class:'row'},el('div',{},el('div',{class:'row'},el('strong',{text:d.alias||d.label||d.id}),el('span',{class:`badge ${d.online?'online':'offline'}`,text:d.online?'ONLINE':'OFFLINE'})),el('div',{class:'tiny muted'},`${d.role||'device'} • seen ${d.last_seen_secs}s ago`)),el('div',{class:'actions'},el('button',{onclick:()=>queueSelfUpdate(d.id)},'Update'),el('button',{onclick:()=>forgetDevice(d.id)},'Forget'))); const alias=el('input',{value:(d.alias||''),class:'mono',style:'width:100%;margin-top:6px',placeholder:'Set alias…'}); alias.addEventListener('change',async()=>{try{await jpost(`/api/devices/${encodeURIComponent(d.id)}/alias`,{alias:alias.value});}catch(e){alert('Alias failed: '+e.message);}}); const meta=el('div',{class:'grid2',style:'margin-top:8px'},el('div',{},el('div',{class:'tiny muted',text:'id'}),el('div',{class:'mono',text:d.id})),el('div',{},el('div',{class:'tiny muted',text:'version'}),el('div',{text:d.version||'—'})),el('div',{},el('div',{class:'tiny muted',text:'fuel'}),el('div',{text:(d.fuel??'—')})),el('div',{},el('div',{class:'tiny muted',text:'pos'}),el('div',{class:'mono',text:d.pos?`(${d.pos.x??'?'},${d.pos.y??'?'},${d.pos.z??'?'})`:'—'}))); const progs=el('div',{class:'tiny mono',style:'margin-top:6px'},(d.programs||[]).join(', ')||'—'); return el('div',{class:'card'},head,alias,meta,progs); }
+
+async function forgetDevice(id){ if(!confirm(`Forget device ${id}?`))return; const r=await jdel(`/api/devices/${encodeURIComponent(id)}`); if(!r){alert('Server does not support DELETE /api/devices/<id> yet.');return;} await refresh(); }
+async function queueSelfUpdate(id){ try{const rec=await jpost('/api/jobs',{turtle_id:String(id),cmd:'update_self'}); logJob(`queued self-update for ${id}: ${rec.id}`);}catch(e){alert('queue failed: '+e.message);} }
+function logJob(s){ const out=document.getElementById('jobsOut'); out.textContent=s+'\n'+out.textContent; }
+async function loadTree(){ const sub=document.getElementById('subdir').value.trim(); try{const data=await jget('/api/tree?subdir='+encodeURIComponent(sub)); const lines=(data.files||[]).sort((a,b)=>a.path.localeCompare(b.path)).map(f=>`${f.path}  (${f.bytes}B)`); document.getElementById('tree').textContent=lines.join('\n')||(empty); }catch(e){document.getElementById('tree').textContent='error: '+e.message;} }
+async function runTunnel(){ const id=document.getElementById('jobTid').value.trim(); const len=parseInt(document.getElementById('jobLen').value,10)||1; try{const rec=await jpost('/api/jobs',{turtle_id:id,cmd:'tunnel',args:{length:len}}); logJob(`queued tunnel for ${id}: ${rec.id}`);}catch(e){alert('queue failed: '+e.message);} }
+
+/* ---- smarter refresh ---- */
+let okRefreshMs=5000, hiddenRefreshMs=20000, refreshMs=okRefreshMs, maxBackoff=60000;
+document.addEventListener('visibilitychange',()=>{refreshMs=document.visibilityState==='visible'?okRefreshMs:hiddenRefreshMs;});
+
+async function refresh(){
+  const banner=document.getElementById('authBanner'), msg=document.getElementById('authMsg');
+  try{
+    const data=await jget('/api/devices');
+    banner.style.display='none';
+    const devs=data.devices||[];
+    const grid=document.getElementById('devices'); grid.innerHTML=''; devs.forEach(d=>grid.append(deviceCard(d)));
+    drawMap(devs); anchorListFrom(devs);
+    refreshMs=document.visibilityState==='visible'?okRefreshMs:hiddenRefreshMs;
+  }catch(e){
+    const txt=String(e.message||e);
+    if(txt.startsWith('401')){ banner.style.display='flex'; msg.textContent=' unauthorized (no/invalid token)'; }
+    else{ console.warn('[refresh error]',txt); refreshMs=Math.min((refreshMs||okRefreshMs)*2,maxBackoff); }
+  }finally{ setTimeout(refresh,refreshMs); }
+}
+
+/* wires */
+document.getElementById('loadTree').onclick=loadTree;
+document.getElementById('queueTunnel').onclick=runTunnel;
+document.getElementById('queueSelf').onclick=()=>queueSelfUpdate(document.getElementById('jobTid').value.trim());
+document.getElementById('btnLogin').onclick=async()=>{ const t=document.getElementById('tokenInput').value.trim(); if(!t)return; await loginFlow(t); };
+document.getElementById('btnLogout').onclick=logoutFlow;
+
+/* init */
+if(QS_TOKEN){ setToken(QS_TOKEN); history.replaceState({}, "", location.pathname); }
+loadTree(); refresh();
+</script>

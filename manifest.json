@@ -1,0 +1,56 @@
+{
+  "version": "1.0.0",
+  "base": "/files",
+  "channels": {
+    "stable": {
+      "roles": {
+        "turtle": [
+          "/kari/boot/startup.lua",
+          "/kari/os/kari_lib.lua",
+          "/kari/turtles/agent.lua",
+          "/kari/turtles/report_files.lua",
+          "/kari/services/gpsd.lua"
+        ],
+        "tablet": [
+          "/kari/boot/startup.lua",
+          "/kari/os/kari_lib.lua",
+          "/kari/os/main.lua",
+          "/kari/os/tablet_input.lua",
+          "/kari/tablet/tvcd.lua",
+          "/kari/services/pcd.lua",
+          "/kari/services/gpsd.lua"
+        ],
+        "hub": [
+          "/kari/boot/startup.lua",
+          "/kari/os/kari_lib.lua",
+          "/kari/hub/hubd.lua",
+          "/kari/hub/svcd.lua",
+          "/kari/hub/hubctl.lua",
+          "/kari/services/pcd.lua",
+          "/kari/services/gpsd.lua",
+          "/kari/os/main.lua"
+        ],
+        "pc": [
+          "/kari/boot/startup.lua",
+          "/kari/os/kari_lib.lua",
+          "/kari/pc/agent.lua",
+          "/kari/pc/cfgfiles.lua",
+          "/kari/pc/report_files.lua",
+          "/kari/services/pcd.lua",
+          "/kari/services/gpsd.lua"
+        ]
+      }
+    },
+    "nightly": {
+      "roles": {
+        "turtle": [
+          "/kari/boot/startup.lua",
+          "/kari/os/kari_lib.lua",
+          "/kari/turtles/agent.lua",
+          "/kari/turtles/report_files.lua",
+          "/kari/services/gpsd.lua"
+        ]
+      }
+    }
+  }
+}

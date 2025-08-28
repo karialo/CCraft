@@ -1,0 +1,23 @@
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editors
+*.swp
+.vscode/
+.idea/
+
+# Archives & binaries
+*.zip
+*.tar.gz
+*.rar
+*.exe
+*.dll
+
+# Minecraft / CC temp
+computercraft/logs/
+**/*.log
+
+# Node, python, etc (if any)
+node_modules/
+__pycache__/
